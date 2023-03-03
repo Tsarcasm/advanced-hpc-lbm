@@ -1,0 +1,9 @@
+-03
+
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  Ts/call  Ts/call  name    
+ 99.81     31.44    31.44                             collision
+  0.32     31.54     0.10                             propagate

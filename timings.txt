@@ -1,0 +1,11 @@
+=== optimised serial **22.0s to beat** ===
+
+initial                             33.3
+-fast -mtune                        28.7
+-ffast-math -march                  26.5
+no-ffast-math -march                24.5
+loop fusion, merged rebound         25.6 (got worse because probably compiler vectorisation was hindered)
+
+node: profile_1.txt
+
+merged av_velocity into collision   21.9 woohoo!
