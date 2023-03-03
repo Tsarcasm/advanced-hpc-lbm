@@ -20,3 +20,9 @@ icc -fma -xHOST                     16.6~
 
 icc #pragma simd                    31.3 (?)
 icc restrict                        16.6
+
+vectorised SoA gcc                  25.7
+vectorised SoA icc                  29.1 :<
+
+
+
