@@ -2,8 +2,9 @@
 
 EXE=d2q9-bgk
 
-CC=gcc
-CFLAGS= -std=c99 -Wall -Ofast -mtune=native -march=native
+# CC=gcc
+CC=icc
+CFLAGS= -std=c99 -Wall -Ofast -mtune=native -march=native -fma -xHOST -fopenmp-simd
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
