@@ -23,6 +23,7 @@ icc restrict                        16.6
 
 vectorised SoA gcc                  25.7
 vectorised SoA icc                  29.1 :<
+vectorised correct align, _assume   8.5 !!!!
 
 
 

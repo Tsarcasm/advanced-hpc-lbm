@@ -4,7 +4,7 @@ EXE=d2q9-bgk
 
 # CC=gcc
 CC=icc
-CFLAGS= -std=c99 -Wall -Ofast -mtune=native -march=native -fma -xHOST
+CFLAGS= -std=c99 -Wall -Ofast -mtune=native -march=native -fma -xHOST -qopenmp
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
