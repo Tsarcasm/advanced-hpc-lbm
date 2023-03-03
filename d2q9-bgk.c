@@ -92,10 +92,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
 ** timestep calls, in order, the functions:
 ** accelerate_flow(), propagate(), rebound() & collision()
 */
-float timestep(const t_param params, t_speed* start_cells, t_speed* tmp_cells, t_speed* end_cells, int* obstacles);
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles);
-int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int ii, int jj);
-float collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int ii, int jj);
+float timestep(const t_param params, t_speed*restrict start_cells, t_speed*restrict tmp_cells, t_speed*restrict end_cells, int*restrict obstacles);
+int accelerate_flow(const t_param params, t_speed*restrict cells, int*restrict obstacles);
+int propagate(const t_param params, t_speed*restrict cells, t_speed*restrict tmp_cells, int ii, int jj);
+float collision(const t_param params, t_speed*restrict cells, t_speed*restrict tmp_cells, int*restrict obstacles, int ii, int jj);
 int write_values(const t_param params, t_speed* cells, int* obstacles, float* av_vels);
 
 /* finalise, including freeing up allocated memory */
@@ -212,7 +212,7 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
-float timestep(const t_param params, t_speed* start_cells, t_speed* tmp_cells, t_speed *end_cells, int* obstacles)
+float timestep(const t_param params, t_speed *restrict start_cells, t_speed *restrict tmp_cells, t_speed *restrict end_cells, int *restrict obstacles)
 {
   accelerate_flow(params, start_cells, obstacles);
 
@@ -229,7 +229,7 @@ float timestep(const t_param params, t_speed* start_cells, t_speed* tmp_cells, t
   return tot_vel;
 }
 
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
+int accelerate_flow(const t_param params, t_speed*restrict cells, int*restrict obstacles)
 {
   /* compute weighting factors */
   float w1 = params.density * params.accel / 9.f;
@@ -238,6 +238,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
   /* modify the 2nd row of the grid */
   int jj = params.ny - 2;
 
+  #pragma omp simd
   for (int ii = 0; ii < params.nx; ii++)
   {
     /* if the cell is not occupied and
@@ -261,7 +262,7 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
   return EXIT_SUCCESS;
 }
 
-int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int ii, int jj)
+int propagate(const t_param params, t_speed*restrict cells, t_speed*restrict tmp_cells, int ii, int jj)
 {
   /* determine indices of axis-direction neighbours
   ** respecting periodic boundary conditions (wrap around) */
@@ -288,7 +289,7 @@ int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells, int ii, 
 }
 
 
-float collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, int ii, int jj)
+float collision(const t_param params, t_speed*restrict cells, t_speed*restrict tmp_cells, int*restrict obstacles, int ii, int jj)
 {
   const float c_sq = 1.f / 3.f; /* square of speed of sound */
   const float w0 = 4.f / 9.f;  /* weighting factor */
@@ -315,7 +316,7 @@ float collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* o
   }
   /* compute local density total */
   float local_density = 0.f;
-
+  #pragma omp simd reduction(+:local_density)
   for (int kk = 0; kk < NSPEEDS; kk++)
   {
     local_density += tmp_cells[idx].speeds[kk];
@@ -385,6 +386,7 @@ float collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* o
                                     - u_sq / (2.f * c_sq));
 
   /* relaxation step */
+  #pragma omp simd
   for (int kk = 0; kk < NSPEEDS; kk++)
   {
     cells[idx].speeds[kk] = tmp_cells[idx].speeds[kk]

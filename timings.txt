@@ -18,3 +18,5 @@ gcc (GCC) 7.2.0                     22.0
 icc 17.0.1 2016100516.7             16.6
 icc -fma -xHOST                     16.6~
 
+icc #pragma simd                    31.3 (?)
+icc restrict                        16.6
