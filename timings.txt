@@ -27,4 +27,7 @@ vectorised correct align, _assume   8.5 !!!!
 vectorised assume-safe-padding      8.4
 added more __assume(params)         7.0
 
-
+omp                                 1.5
+omp loop fusion                     1.25
+omp loop fusion, some calcs         1.1
+numa working                        0.857519 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
