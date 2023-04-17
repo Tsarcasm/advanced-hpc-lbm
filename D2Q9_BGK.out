@@ -1,0 +1,12 @@
+Running on host compute242.bc4.acrc.priv
+Time is Fri Apr 7 15:22:11 BST 2023
+Directory is /user/home/pa18190/try2
+Slurm job ID is 11332814
+This job runs on the following machines:
+compute242
+==done==
+Reynolds number:		1.006125831604E+01
+Elapsed Init time:			0.074316 (s)
+Elapsed Compute time:			5.794762 (s)
+Elapsed Collate time:			0.000001 (s)
+Elapsed Total time:			5.869079 (s)

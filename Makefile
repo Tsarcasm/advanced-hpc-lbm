@@ -9,12 +9,12 @@ LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
 AV_VELS_FILE=./av_vels.dat
-REF_FINAL_STATE_FILE=check/1024x1024.final_state.dat
-REF_AV_VELS_FILE=check/1024x1024.av_vels.dat
+REF_FINAL_STATE_FILE=check/128x128.final_state.dat
+REF_AV_VELS_FILE=check/128x128.av_vels.dat
 
 # export OMP_PROC_BIND=true
 # export OMP_PLACES=cores
-# export OMP_NUM_THREADS=2
+# export OMP_NUM_THREADS=28
 
 all: $(EXE)
 
@@ -27,5 +27,4 @@ check:
 .PHONY: all check clean
 
 clean:
-	rm -f ./output/*.out
 	rm -f $(EXE)
