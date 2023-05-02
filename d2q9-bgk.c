@@ -154,13 +154,13 @@ void free_t_speed_soa(t_speed_soa* speeds)
   __assume((params.nx % 32) == 0); \
   __assume((params.nx % 64) == 0); \
   __assume((params.nx % 128) == 0); \
-  __assume((params.ny % 2) == 0); \
-  __assume((params.ny % 4) == 0); \
-  __assume((params.ny % 8) == 0); \
-  __assume((params.ny % 16) == 0); \
-  __assume((params.ny % 32) == 0); \
-  __assume((params.ny % 64) == 0); \
-  __assume((params.ny % 128) == 0); \
+  // __assume((params.ny % 2) == 0); \
+  // __assume((params.ny % 4) == 0); \
+  // __assume((params.ny % 8) == 0); \
+  // __assume((params.ny % 16) == 0); \
+  // __assume((params.ny % 32) == 0); \
+  // __assume((params.ny % 64) == 0); \
+  // __assume((params.ny % 128) == 0); \
 
 
 #define SOA_SUM(soa, idx) (soa->v0[idx] + soa->v1[idx] + soa->v2[idx] + soa->v3[idx] + soa->v4[idx] + soa->v5[idx] + soa->v6[idx] + soa->v7[idx] + soa->v8[idx])
@@ -324,10 +324,20 @@ int main(int argc, char* argv[])
 
   int left_rank = (mpi_rank == 0)? mpi_size - 1 : mpi_rank - 1;
   int right_rank = (mpi_rank + 1) % mpi_size;
-  int rowcount =  params.ny / mpi_size;
-  printf("MPI rank %d of %d\n", mpi_rank, mpi_size);
-  printf("Rowcount: %d\n", rowcount);
-  printf("Neighbours: left: %d, right: %d\n", left_rank, right_rank);
+
+  // Calculate inclusive start row and exclusive end row 
+  int base_rowcount = params.ny / mpi_size;
+  int leftover_rows = params.ny % mpi_size;
+  int rowcount = (mpi_rank < leftover_rows) ? base_rowcount + 1 : base_rowcount;
+
+  int start_row;
+  if (mpi_rank < leftover_rows) {
+      start_row = mpi_rank * (base_rowcount + 1);
+  } else {
+      start_row = (leftover_rows * (base_rowcount + 1)) + (mpi_rank - leftover_rows) * base_rowcount;
+  }
+  int end_row = start_row + rowcount;
+  printf("Rowcount: %d, neighbours: l:%d,r:%d, start: %d, end: %d\n", rowcount, left_rank, right_rank, start_row, end_row);
 
   // colcount = params.nx; (same as before MPI)
 
@@ -337,25 +347,25 @@ int main(int argc, char* argv[])
   float *sendbuf = (float*)malloc(params.nx * 9 * sizeof(float));
   float *recvbuf = (float*)malloc(params.nx * 9 * sizeof(float));
 
-  float num_cells_without_obstacles = 0;
-  _ASSUME_PARAMS(params);
-  __assume_aligned(obstacles, 64);
-  #pragma omp parallel for reduction(+:num_cells_without_obstacles)
-  for (int jj = 0; jj < params.ny; jj++)
-  {
-    const int jj_ = jj * params.nx;
-    #pragma omp simd reduction(+:num_cells_without_obstacles)
-    for (int ii = 0; ii < params.nx; ii++)
-    {
-      const int cell_idx = ii + jj_;
-      if (!obstacles[cell_idx])
-      {
-        num_cells_without_obstacles++;
-      }
-    }
-  }
+  // float num_cells_without_obstacles = 0;
+  // _ASSUME_PARAMS(params);
+  // __assume_aligned(obstacles, 64);
+  // // #pragma omp parallel for reduction(+:num_cells_without_obstacles)
+  // for (int jj = 0; jj < rowcount; jj++)
+  // {
+  //   const int jj_ = jj * params.nx;
+  //   #pragma omp simd reduction(+:num_cells_without_obstacles)
+  //   for (int ii = 0; ii < params.nx; ii++)
+  //   {
+  //     const int cell_idx = ii + jj_;
+  //     if (!obstacles[cell_idx])
+  //     {
+  //       num_cells_without_obstacles++;
+  //     }
+  //   }
+  // }
 
-  printf("Num obstacles: %d\n", params.nx * params.ny - (int)num_cells_without_obstacles);
+  // printf("Num obstacles: %d\n", params.nx * rowcount - (int)num_cells_without_obstacles);
 
 
   /* Init time stops here, compute time starts*/
@@ -367,7 +377,6 @@ int main(int argc, char* argv[])
   // This only works if we have fewer than params.ny / 2 ranks
   assert(mpi_size <= params.ny / 2);
   int is_accelerator = (mpi_rank == mpi_size - 1);
-  printf("Rank %d accelerator?: %d\n", mpi_rank, is_accelerator);
 
   for (int tt = 0; tt < params.maxIters; tt++)
   {
@@ -378,14 +387,14 @@ int main(int argc, char* argv[])
     /* loop over _all_ cells */
     // propagate(params, start_cells, tmp_cells);
     tot_vel = collision(params, start_cells, end_cells, tmp_cells, obstacles, rowcount);
-    av_vels[tt] = tot_vel / num_cells_without_obstacles;
+    av_vels[tt] = tot_vel;
 
     // swap pointers
     t_speed_soa* tmp = start_cells;
     start_cells = end_cells;
     end_cells = tmp;
   }
-  printf("Finished computing\n");
+  // printf("Finished computing\n");
   /* Compute time stops here, collate time starts*/
   gettimeofday(&timstr, NULL);
   comp_toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -393,38 +402,56 @@ int main(int argc, char* argv[])
 
   // Collate data from ranks here 
   /*
-  int MPI_Gather(
-    const void* sendbuf,     // starting address of send buffer
-    int sendcount,           // number of elements in send buffer
-    MPI_Datatype sendtype,   // data type of send buffer elements
-    void* recvbuf,           // starting address of receive buffer
-    int recvcount,           // number of elements for any single receive
-    MPI_Datatype recvtype,   // data type of receive buffer elements
-    int root,                // rank of receiving process
-    MPI_Comm comm            // communicator
+  int MPI_Gatherv(
+    const void *sendbuf, 
+    int sendcount, 
+    MPI_Datatype sendtype, 
+    void *recvbuf, 
+    const int *recvcounts, 
+    const int *displs, 
+    MPI_Datatype recvtype, 
+    int root, 
+    MPI_Comm comm
   ); 
   */
   // Gather all speeds (array big enough to hold all cells across all ranks)
   t_speed_soa *final_cells = alloc_t_speed_soa(params.nx * params.ny);
-  // start: start_cells->vn + params.nx (skip halo)
-  const int size = params.nx * rowcount;
+  int *recvcounts = NULL;
+  int *displs = NULL;
+  if (mpi_rank == 0) {
+    // calculate recvcounts and displs
+    recvcounts = (int*)malloc(mpi_size * sizeof(int));
+    displs = (int*)malloc(mpi_size * sizeof(int));
+    for (int i = 0; i < mpi_size; i++) {
+      recvcounts[i] = params.nx * ((i < leftover_rows) ? base_rowcount + 1 : base_rowcount);
+      displs[i] = params.nx * ((i < leftover_rows) ? (base_rowcount + 1) * i : (leftover_rows * (base_rowcount + 1)) + (i - leftover_rows) * base_rowcount);
+    }
+  }
 
-  printf("gathering\n");
-  MPI_Gather(start_cells->v0 + params.nx, size, MPI_FLOAT, final_cells->v0, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v1 + params.nx, size, MPI_FLOAT, final_cells->v1, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v2 + params.nx, size, MPI_FLOAT, final_cells->v2, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v3 + params.nx, size, MPI_FLOAT, final_cells->v3, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v4 + params.nx, size, MPI_FLOAT, final_cells->v4, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v5 + params.nx, size, MPI_FLOAT, final_cells->v5, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v6 + params.nx, size, MPI_FLOAT, final_cells->v6, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v7 + params.nx, size, MPI_FLOAT, final_cells->v7, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  MPI_Gather(start_cells->v8 + params.nx, size, MPI_FLOAT, final_cells->v8, size, MPI_FLOAT, 0, MPI_COMM_WORLD);
-  printf("gathered\n");
+  // printf("gathering\n");
+  MPI_Gatherv(start_cells->v0 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v0, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v1 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v1, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v2 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v2, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v3 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v3, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v4 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v4, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v5 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v5, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v6 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v6, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v7 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v7, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(start_cells->v8 + params.nx, params.nx * rowcount, MPI_FLOAT, final_cells->v8, recvcounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+  // printf("gathered\n");
   // Gather all obstacles (array big enough to hold all cells across all ranks)
   // TODO: do we need to do this? Or just pre-load the obstacles on rank 0?
   int *final_obstacles = _mm_malloc(params.nx * params.ny * sizeof(int), 64);
-  MPI_Gather(obstacles, size, MPI_INT, final_obstacles, size, MPI_INT, 0, MPI_COMM_WORLD);
-  printf("gathered obstacles\n");
+  // MPI_Gather(obstacles, size, MPI_INT, final_obstacles, size, MPI_INT, 0, MPI_COMM_WORLD);
+  MPI_Gatherv(obstacles, rowcount * params.nx, MPI_INT, final_obstacles, recvcounts, displs, MPI_INT, 0, MPI_COMM_WORLD);
+  // printf("gathered obstacles\n");
+
+  // Gather all av_vels
+  float *final_av_vels = malloc(params.maxIters * sizeof(float) * mpi_size);
+  MPI_Gather(av_vels, params.maxIters, MPI_FLOAT, final_av_vels, params.maxIters, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  // printf("gathered av_vels\n");
+
 
 
 
@@ -438,6 +465,17 @@ int main(int argc, char* argv[])
     int num_final_obstacles = 0;
     for (int ii = 0; ii < params.nx * params.ny; ii++) {
       if (final_obstacles[ii] == 1) num_final_obstacles++;
+    }
+    const int final_num_cells_without_obstacles = (params.nx * params.ny) - num_final_obstacles;
+
+    // calculate final av_vels
+    float final_av_vel = 0.0f;
+    for (int ii = 0; ii < params.maxIters; ii++) {
+      float total_step_vel = 0.0f;
+      for (int jj = 0; jj < mpi_size; jj++) {
+        total_step_vel += final_av_vels[ii + jj * params.maxIters];
+      }
+      av_vels[ii] = total_step_vel / final_num_cells_without_obstacles;
     }
     printf("Final number of obstacles: %d\n", num_final_obstacles);
 
@@ -512,7 +550,7 @@ int propagate(const t_param params, t_speed_soa*restrict cells, t_speed_soa*rest
   _ASSUME_ALIGNED_SOA(tmp_cells)
   _ASSUME_PARAMS(params)
   
-  #pragma omp parallel for
+  // #pragma omp parallel for
   for (int jj = 0; jj < params.ny; jj++)
   {
     #pragma omp simd
@@ -564,7 +602,7 @@ float collision(const t_param params, t_speed_soa*restrict start_cells, t_speed_
   const t_speed_soa tmp_cells_ = *tmp_cells;
   const t_speed_soa cells_ = *cells;
 
-  #pragma omp parallel for reduction(+:tot_u)
+  // #pragma omp parallel for reduction(+:tot_u)
   for (int jj = 1; jj < rowcount+1; jj++)
   {
     // y-boundaries wraparound is avoided by the halo cells
@@ -811,7 +849,20 @@ int initialise(const char* paramfile, const char* obstaclefile,
   /* main grid */
   // Number of cells: num columns * (numrows + 2) 
   // We need the extra two rows for the halo cells
-  const int rowcount =  params->ny / mpi_size;
+
+  // Calculate inclusive start row and exclusive end row 
+  int base_rowcount = params->ny / mpi_size;
+  int leftover_rows = params->ny % mpi_size;
+  int rowcount = (mpi_rank < leftover_rows) ? base_rowcount + 1 : base_rowcount;
+
+  int start_row;
+  if (mpi_rank < leftover_rows) {
+      start_row = mpi_rank * (base_rowcount + 1);
+  } else {
+      start_row = (leftover_rows * (base_rowcount + 1)) + (mpi_rank - leftover_rows) * base_rowcount;
+  }
+  int end_row = start_row + rowcount;
+
   const int numcells = params->nx * (rowcount + 2);
   (*start_cells_ptr) = alloc_t_speed_soa(numcells);
   if (*start_cells_ptr == NULL) die("cannot allocate memory for start_cells", __LINE__, __FILE__);
@@ -840,7 +891,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   _ASSUME_ALIGNED_SOA((*end_cells_ptr))
   _ASSUME_PARAMS((*params))
 
-  #pragma omp parallel for 
+  // #pragma omp parallel for 
   for (int jj = 0; jj < rowcount + 2; jj++)
   {
     #pragma omp simd
@@ -888,7 +939,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
 
   /* first set all cells in obstacle array to zero */
-  #pragma omp parallel for 
+  // #pragma omp parallel for 
   for (int jj = 0; jj < rowcount; jj++)
   {
     #pragma omp simd
@@ -907,10 +958,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
     die(message, __LINE__, __FILE__);
   }
 
-  // Inclusive start row
-  const int start_row = params->ny * mpi_rank / mpi_size;
-  // Exclusive end row (i.e. next rank start row)
-  const int end_row = params->ny * (mpi_rank + 1) / mpi_size;
+
+  
 
 
   /* read-in the blocked cells list */
